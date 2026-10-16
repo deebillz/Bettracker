@@ -1,26 +1,18 @@
-FROM node:20-alpine
-
+# Optional: lets the app run on any Docker host (Railway, Fly.io, a VPS).
+# Render's free tier doesn't need this; it builds with render.yaml instead.
+FROM node:22-alpine AS build
 WORKDIR /app
-
-# Copy package files and install dependencies
 COPY package.json package-lock.json ./
 RUN npm ci
-
-# Copy source code
 COPY . .
+RUN npm run build && npm prune --omit=dev
 
-# Build the app
-RUN npm run build
-
-# Create data directory for SQLite
-RUN mkdir -p /app/data
-
-# Set environment variables
+FROM node:22-alpine
+WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=3000
-
-# Expose port
-EXPOSE 3000
-
-# Start the server
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/migrations ./migrations
+COPY package.json ./
+EXPOSE 5000
 CMD ["node", "dist/index.cjs"]

@@ -4,6 +4,7 @@
 export const TEAMS_BY_SPORT: Record<string, string[]> = {
   MLB: [
     "Arizona Diamondbacks",
+    "Athletics",
     "Atlanta Braves",
     "Baltimore Orioles",
     "Boston Red Sox",
@@ -22,7 +23,6 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
     "Minnesota Twins",
     "New York Mets",
     "New York Yankees",
-    "Oakland Athletics",
     "Philadelphia Phillies",
     "Pittsburgh Pirates",
     "San Diego Padres",
@@ -102,7 +102,6 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
   ],
   NHL: [
     "Anaheim Ducks",
-    "Arizona Coyotes",
     "Boston Bruins",
     "Buffalo Sabres",
     "Calgary Flames",
@@ -129,7 +128,7 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
     "St. Louis Blues",
     "Tampa Bay Lightning",
     "Toronto Maple Leafs",
-    "Utah Hockey Club",
+    "Utah Mammoth",
     "Vancouver Canucks",
     "Vegas Golden Knights",
     "Washington Capitals",
@@ -260,6 +259,7 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
     // MLS
     "Atlanta United",
     "Austin FC",
+    "CF Montréal",
     "Charlotte FC",
     "Chicago Fire",
     "Cincinnati FC",
@@ -284,6 +284,7 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
     "Seattle Sounders",
     "Sporting Kansas City",
     "St. Louis City SC",
+    "San Diego FC",
     "Toronto FC",
     "Vancouver Whitecaps",
   ],
@@ -303,63 +304,3 @@ export const TEAMS_BY_SPORT: Record<string, string[]> = {
 
 // Sports that have team matchups vs individual matchups (fighters/players)
 export const INDIVIDUAL_SPORTS = ["Boxing", "MMA", "Tennis", "Other"];
-
-// Helper to get short team name (last word usually)
-export function getShortName(fullName: string): string {
-  const parts = fullName.split(" ");
-  // Handle special cases
-  if (fullName === "Philadelphia 76ers") return "76ers";
-  if (fullName === "Portland Trail Blazers") return "Trail Blazers";
-  if (fullName === "Golden State Warriors") return "Warriors";
-  if (fullName === "Oklahoma City Thunder") return "Thunder";
-  if (fullName === "San Antonio Spurs") return "Spurs";
-  if (fullName === "San Francisco 49ers") return "49ers";
-  if (fullName === "San Francisco Giants") return "Giants";
-  if (fullName === "San Diego Padres") return "Padres";
-  if (fullName === "San Jose Sharks") return "Sharks";
-  if (fullName === "San Jose Earthquakes") return "Earthquakes";
-  if (fullName === "Los Angeles Dodgers") return "Dodgers";
-  if (fullName === "Los Angeles Angels") return "Angels";
-  if (fullName === "Los Angeles Lakers") return "Lakers";
-  if (fullName === "Los Angeles Kings") return "Kings";
-  if (fullName === "Los Angeles Chargers") return "Chargers";
-  if (fullName === "Los Angeles Rams") return "Rams";
-  if (fullName === "Las Vegas Raiders") return "Raiders";
-  if (fullName === "Vegas Golden Knights") return "Golden Knights";
-  if (fullName === "Tampa Bay Rays") return "Rays";
-  if (fullName === "Tampa Bay Buccaneers") return "Buccaneers";
-  if (fullName === "Tampa Bay Lightning") return "Lightning";
-  if (fullName === "Green Bay Packers") return "Packers";
-  if (fullName === "Kansas City Chiefs") return "Chiefs";
-  if (fullName === "Kansas City Royals") return "Royals";
-  if (fullName === "New York Yankees") return "Yankees";
-  if (fullName === "New York Mets") return "Mets";
-  if (fullName === "New York Knicks") return "Knicks";
-  if (fullName === "New York Jets") return "Jets";
-  if (fullName === "New York Giants") return "Giants (NFL)";
-  if (fullName === "New York Islanders") return "Islanders";
-  if (fullName === "New York Rangers") return "Rangers (NHL)";
-  if (fullName === "New York City FC") return "NYCFC";
-  if (fullName === "New York Red Bulls") return "Red Bulls";
-  if (fullName === "New England Patriots") return "Patriots";
-  if (fullName === "New England Revolution") return "Revolution";
-  if (fullName === "New Orleans Saints") return "Saints";
-  if (fullName === "New Orleans Pelicans") return "Pelicans";
-  if (fullName === "New Jersey Devils") return "Devils";
-  if (fullName === "St. Louis Cardinals") return "Cardinals (MLB)";
-  if (fullName === "St. Louis Blues") return "Blues";
-  if (fullName === "St. Louis City SC") return "St. Louis City";
-  if (fullName.startsWith("St. John's")) return "St. John's";
-  if (fullName === "Real Salt Lake") return "RSL";
-  if (fullName === "Real Madrid") return "Real Madrid";
-  if (fullName === "FC Dallas") return "FC Dallas";
-  if (fullName === "D.C. United") return "DC United";
-  if (fullName === "AC Milan") return "AC Milan";
-  if (fullName === "LA Clippers") return "Clippers";
-  if (fullName === "Inter Miami") return "Inter Miami";
-  if (fullName === "Inter Milan") return "Inter Milan";
-  if (fullName === "Utah Hockey Club") return "Utah HC";
-  // College teams — return mascot
-  if (fullName.includes(" ")) return parts[parts.length - 1];
-  return fullName;
-}

@@ -1,72 +1,57 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { apiRequest } from "./queryClient";
+import type { PublicUser } from "@shared/schema";
+import { apiRequest, queryClient } from "./queryClient";
 
-interface AuthUser {
-  id: number;
+interface RegisterInput {
+  email: string;
   username: string;
   displayName: string;
+  password: string;
 }
 
 interface AuthContextType {
-  user: AuthUser | null;
-  token: string | null;
+  user: PublicUser | null;
   isLoading: boolean;
-  login: (username: string, pin: string) => Promise<void>;
-  register: (username: string, pin: string, displayName: string) => Promise<void>;
-  logout: () => void;
+  login: (login: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// In-memory token storage (no localStorage — blocked in iframe)
-let memoryToken: string | null = null;
-
-export function getAuthToken(): string | null {
-  return memoryToken;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const saveSession = useCallback((newToken: string, newUser: AuthUser) => {
-    memoryToken = newToken;
-    setToken(newToken);
-    setUser(newUser);
+  // Restore the session from the cookie on page load, so a refresh keeps you signed in.
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((u) => setUser(u))
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback(async (username: string, pin: string) => {
-    const res = await apiRequest("POST", "/api/auth/login", { username, pin });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Login failed");
-    }
-    const data = await res.json();
-    saveSession(data.token, data.user);
-  }, [saveSession]);
+  const login = useCallback(async (login: string, password: string) => {
+    const res = await apiRequest("POST", "/api/auth/login", { login, password });
+    queryClient.clear();
+    setUser(await res.json());
+  }, []);
 
-  const register = useCallback(async (username: string, pin: string, displayName: string) => {
-    const res = await apiRequest("POST", "/api/auth/register", { username, pin, displayName });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Registration failed");
-    }
-    const data = await res.json();
-    saveSession(data.token, data.user);
-  }, [saveSession]);
+  const register = useCallback(async (input: RegisterInput) => {
+    const res = await apiRequest("POST", "/api/auth/register", input);
+    queryClient.clear();
+    setUser(await res.json());
+  }, []);
 
-  const logout = useCallback(() => {
-    if (memoryToken) {
-      apiRequest("POST", "/api/auth/logout").catch(() => {});
-    }
-    memoryToken = null;
-    setToken(null);
+  const logout = useCallback(async () => {
+    await apiRequest("POST", "/api/auth/logout").catch(() => {});
+    queryClient.clear();
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

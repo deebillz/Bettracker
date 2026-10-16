@@ -123,7 +123,7 @@ export default function BreakdownCharts({ bets, isLoading }: { bets: Bet[]; isLo
                   <div className="flex gap-3">
                     <span className="text-muted-foreground">{s.winRate}% WR</span>
                     <span className={s.profit >= 0 ? "text-emerald-500" : "text-red-500"}>
-                      {s.profit >= 0 ? "+" : ""}${s.profit.toFixed(0)}
+                      {s.profit >= 0 ? "+" : "-"}${Math.abs(s.profit).toFixed(0)}
                     </span>
                   </div>
                 </div>
@@ -144,7 +144,7 @@ export default function BreakdownCharts({ bets, isLoading }: { bets: Bet[]; isLo
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={betTypeBreakdown} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-              <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v < 0 ? "-" : ""}$${Math.abs(v)}`} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} width={80} />
               <Tooltip
                 contentStyle={{
