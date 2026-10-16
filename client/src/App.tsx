@@ -6,6 +6,7 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import Dashboard from "@/pages/dashboard";
 import AuthPage from "@/pages/auth";
+import AnalyticsPage from "@/pages/analytics";
 import NotFound from "@/pages/not-found";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -27,6 +28,7 @@ function AppRouter() {
     <Router hook={useHashLocation}>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/analytics" component={AnalyticsPage} />
         <Route component={NotFound} />
       </Switch>
     </Router>

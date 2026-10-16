@@ -14,7 +14,8 @@ export default function KpiCards({ bets, isLoading }: { bets: Bet[]; isLoading: 
   const totalProfit = settled.reduce((s, b) => s + (b.profit ?? 0), 0);
   const wins = settled.filter((b) => b.result === "won").length;
   const losses = settled.filter((b) => b.result === "lost").length;
-  const winRate = settled.length > 0 ? (wins / settled.length) * 100 : 0;
+  // Pushes are neither wins nor losses, so they are left out of the win rate
+  const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
   const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
   const pending = bets.filter((b) => b.result === "pending").length;
 
