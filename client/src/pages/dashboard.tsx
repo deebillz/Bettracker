@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Dashboard() {
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
 
@@ -89,6 +89,7 @@ export default function Dashboard() {
   });
 
   const handleSettle = (bet: BetWithLegs) => {
+    dismiss();
     setSettlingBet(bet);
     setSettleOpen(true);
   };
@@ -134,7 +135,13 @@ export default function Dashboard() {
             >
               <LogOut className="h-4 w-4" />
             </Button>
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <Dialog
+              open={addOpen}
+              onOpenChange={(open) => {
+                if (open) dismiss(); // clear any confirmation so it can't cover the form
+                setAddOpen(open);
+              }}
+            >
               <DialogTrigger asChild>
                 <Button size="sm" data-testid="button-add-bet">
                   <Plus className="mr-1.5 h-4 w-4" />
