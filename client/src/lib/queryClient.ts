@@ -45,8 +45,11 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: defaultQueryFn,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      // Reload when you switch back to the app (or come back online), so bets
+      // logged on another device show up without a manual refresh.
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 10_000,
       retry: false,
     },
     mutations: { retry: false },

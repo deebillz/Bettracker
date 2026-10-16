@@ -103,7 +103,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
@@ -163,7 +163,7 @@ export default function Dashboard() {
       </header>
 
       {/* Main content */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {/* Period selector */}
         <PeriodSelector period={period} onChange={setPeriod} bets={allBets} />
 

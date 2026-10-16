@@ -51,7 +51,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] bg-background">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center space-y-2">
           <div className="flex items-center gap-2">
