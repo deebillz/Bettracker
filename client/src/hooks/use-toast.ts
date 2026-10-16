@@ -6,7 +6,9 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_REMOVE_DELAY = 1000 // remove from the page shortly after it fades out
+const TOAST_DURATION = 2500 // auto-close confirmations after 2.5s
+const ERROR_TOAST_DURATION = 6000 // errors stay a little longer so they can be read
 
 type ToasterToast = ToastProps & {
   id: string
@@ -160,6 +162,10 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Always close on our own timer, so a toast never lingers waiting for a click
+  const duration = props.duration ?? (props.variant === "destructive" ? ERROR_TOAST_DURATION : TOAST_DURATION)
+  setTimeout(dismiss, duration)
 
   return {
     id: id,
