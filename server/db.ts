@@ -1,44 +1,47 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import path from "path";
+import fs from "fs";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-// Use DATABASE_PATH env var for persistent storage (e.g. Railway volumes)
-const dbPath = process.env.DATABASE_PATH || "./data.db";
-const sqlite = new Database(dbPath);
-sqlite.pragma("journal_mode = WAL");
+export type DB = NodePgDatabase<typeof schema>;
 
-export const db = drizzle(sqlite, { schema });
+export let db: DB;
 
-// Auto-create tables if they don't exist
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    pin_hash TEXT NOT NULL,
-    display_name TEXT NOT NULL
-  );
+const migrationsFolder = path.resolve(process.cwd(), "migrations");
 
-  CREATE TABLE IF NOT EXISTS bets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 0,
-    date TEXT NOT NULL,
-    sport TEXT NOT NULL,
-    bet_type TEXT NOT NULL,
-    description TEXT NOT NULL,
-    legs TEXT,
-    odds TEXT NOT NULL,
-    stake REAL NOT NULL,
-    result TEXT NOT NULL DEFAULT 'pending',
-    payout REAL,
-    profit REAL,
-    sportsbook TEXT DEFAULT 'DraftKings',
-    notes TEXT
-  );
-`);
+/**
+ * Connects to Postgres and applies any pending migrations.
+ * - DATABASE_URL set (e.g. Neon): uses a normal Postgres connection.
+ * - Not set, outside production: uses PGlite, an embedded Postgres stored in ./.data,
+ *   so the app runs locally with zero setup.
+ */
+export async function initDb(): Promise<void> {
+  const url = process.env.DATABASE_URL;
 
-// Migration: add user_id column if it doesn't exist (for existing databases)
-try {
-  sqlite.exec(`ALTER TABLE bets ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0;`);
-} catch {
-  // Column already exists, ignore
+  if (url) {
+    const { Pool } = await import("pg");
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    const { migrate } = await import("drizzle-orm/node-postgres/migrator");
+    const pool = new Pool({ connectionString: url, max: 5 });
+    db = drizzle(pool, { schema });
+    await migrate(db, { migrationsFolder });
+    return;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "DATABASE_URL is not set. Add your Postgres connection string (e.g. from Neon) to the environment.",
+    );
+  }
+
+  const dataDir = process.env.PGLITE_DIR || path.resolve(process.cwd(), ".data/pglite");
+  fs.mkdirSync(dataDir, { recursive: true });
+  const { PGlite } = await import("@electric-sql/pglite");
+  const { drizzle } = await import("drizzle-orm/pglite");
+  const { migrate } = await import("drizzle-orm/pglite/migrator");
+  const client = new PGlite(dataDir);
+  const pgliteDb = drizzle(client, { schema });
+  await migrate(pgliteDb, { migrationsFolder });
+  // Both drivers expose the same query builder; the cast keeps one type across the app.
+  db = pgliteDb as unknown as DB;
 }

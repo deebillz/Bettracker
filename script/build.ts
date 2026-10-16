@@ -2,33 +2,9 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
-const allowlist = [
-  "@google/generative-ai",
-  "axios",
-  "cors",
-  "date-fns",
-  "drizzle-orm",
-  "drizzle-zod",
-  "express",
-  "express-rate-limit",
-  "express-session",
-  "jsonwebtoken",
-  "memorystore",
-  "multer",
-  "nanoid",
-  "nodemailer",
-  "openai",
-  "passport",
-  "passport-local",
-  "stripe",
-  "uuid",
-  "ws",
-  "xlsx",
-  "zod",
-  "zod-validation-error",
-];
+// Server dependencies bundled into dist/index.cjs for faster cold starts.
+// Everything else (pg, pglite, ...) is loaded from node_modules at runtime.
+const allowlist = ["drizzle-orm", "express", "express-rate-limit", "helmet", "zod"];
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });

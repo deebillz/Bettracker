@@ -2,13 +2,13 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Bet } from "@shared/schema";
+import type { BetWithLegs } from "@shared/schema";
 import KpiCards from "@/components/kpi-cards";
 import BetForm from "@/components/bet-form";
 import BetHistory from "@/components/bet-history";
 import ProfitChart from "@/components/profit-chart";
 import BreakdownCharts from "@/components/breakdown-charts";
-import SettleBetDialog from "@/components/settle-bet-dialog";
+import SettleBetDialog, { type SettleInput } from "@/components/settle-bet-dialog";
 import PeriodSelector, {
   type Period,
   getCurrentPeriod,
@@ -17,11 +17,9 @@ import PeriodSelector, {
 } from "@/components/period-selector";
 import YearlySummary from "@/components/yearly-summary";
 import { useTheme } from "@/components/theme-provider";
-import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
 import { Plus, Moon, Sun, TrendingUp, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { queryClient as qc } from "@/lib/queryClient";
 import {
   Dialog,
   DialogContent,
@@ -37,14 +35,15 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     logout();
-    qc.clear();
   };
+  const onError = (err: Error) =>
+    toast({ title: "Something went wrong", description: err.message, variant: "destructive" });
   const [addOpen, setAddOpen] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
-  const [settlingBet, setSettlingBet] = useState<Bet | null>(null);
+  const [settlingBet, setSettlingBet] = useState<BetWithLegs | null>(null);
   const [period, setPeriod] = useState<Period>(getCurrentPeriod());
 
-  const { data: allBets = [], isLoading } = useQuery<Bet[]>({
+  const { data: allBets = [], isLoading } = useQuery<BetWithLegs[]>({
     queryKey: ["/api/bets"],
   });
 
@@ -61,11 +60,12 @@ export default function Dashboard() {
       setAddOpen(false);
       toast({ title: "Bet logged", description: "Your bet has been recorded." });
     },
+    onError,
   });
 
   const settleMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; result: string; payout: number; profit: number }) => {
-      const res = await apiRequest("PATCH", `/api/bets/${id}`, data);
+    mutationFn: async ({ id, ...data }: SettleInput) => {
+      const res = await apiRequest("POST", `/api/bets/${id}/settle`, data);
       return res.json();
     },
     onSuccess: () => {
@@ -74,6 +74,7 @@ export default function Dashboard() {
       setSettlingBet(null);
       toast({ title: "Bet settled", description: "Result recorded." });
     },
+    onError,
   });
 
   const deleteMutation = useMutation({
@@ -84,9 +85,10 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
       toast({ title: "Bet deleted" });
     },
+    onError,
   });
 
-  const handleSettle = (bet: Bet) => {
+  const handleSettle = (bet: BetWithLegs) => {
     setSettlingBet(bet);
     setSettleOpen(true);
   };
@@ -139,7 +141,7 @@ export default function Dashboard() {
                   Log Bet
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
+              <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Log a New Bet</DialogTitle>
                 </DialogHeader>
@@ -183,7 +185,6 @@ export default function Dashboard() {
           onSettle={handleSettle}
           onDelete={(id) => deleteMutation.mutate(id)}
         />
-        <PerplexityAttribution />
       </main>
 
       <SettleBetDialog

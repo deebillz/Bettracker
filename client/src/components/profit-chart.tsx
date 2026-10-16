@@ -82,7 +82,7 @@ export default function ProfitChart({ bets, isLoading }: { bets: Bet[]; isLoadin
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               axisLine={false}
               tickLine={false}
-              tickFormatter={(v) => `$${v}`}
+              tickFormatter={(v) => `${v < 0 ? "-" : ""}$${Math.abs(v)}`}
             />
             <Tooltip
               contentStyle={{

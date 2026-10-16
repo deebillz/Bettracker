@@ -40,7 +40,7 @@ export function getShortPeriodLabel(period: Period): string {
   return `${SHORT_MONTHS[period.month]} ${period.year}`;
 }
 
-export function filterBetsByPeriod(bets: Bet[], period: Period): Bet[] {
+export function filterBetsByPeriod<T extends Bet>(bets: T[], period: Period): T[] {
   if (period.view === "all") return bets;
 
   return bets.filter((bet) => {

@@ -1,5 +1,17 @@
 import { useState } from "react";
-import type { Bet } from "@shared/schema";
+import type { BetWithLegs } from "@shared/schema";
+import { calcWin, formatAmericanOdds } from "@shared/odds";
+import { betTypeLabel } from "@/lib/constants";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Trash2, Gavel, MinusCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Trash2, Gavel, MinusCircle, Zap } from "lucide-react";
 
 function ResultBadge({ result }: { result: string }) {
   switch (result) {
@@ -56,14 +68,15 @@ export default function BetHistory({
   onSettle,
   onDelete,
 }: {
-  bets: Bet[];
+  bets: BetWithLegs[];
   isLoading: boolean;
-  onSettle: (bet: Bet) => void;
+  onSettle: (bet: BetWithLegs) => void;
   onDelete: (id: number) => void;
 }) {
   const [sportFilter, setSportFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [resultFilter, setResultFilter] = useState<string>("all");
+  const [confirmDelete, setConfirmDelete] = useState<BetWithLegs | null>(null);
 
   const sports = Array.from(new Set(bets.map((b) => b.sport)));
   const types = Array.from(new Set(bets.map((b) => b.betType)));
@@ -109,7 +122,7 @@ export default function BetHistory({
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               {types.map((t) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
+                <SelectItem key={t} value={t}>{betTypeLabel(t)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -160,9 +173,21 @@ export default function BetHistory({
                     })}
                   </TableCell>
                   <TableCell className="text-xs font-medium">{bet.sport}</TableCell>
-                  <TableCell className="text-xs capitalize">{bet.betType}</TableCell>
-                  <TableCell className="text-xs max-w-[200px] truncate">{bet.description}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">{bet.odds}</TableCell>
+                  <TableCell className="text-xs">{betTypeLabel(bet.betType)}</TableCell>
+                  <TableCell className="text-xs max-w-[240px]">
+                    <div className="truncate" title={bet.description}>{bet.description}</div>
+                    {bet.legs.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground truncate" title={bet.legs.map((l) => `${l.pick} (${formatAmericanOdds(l.odds)})`).join("\n")}>
+                        {bet.legs.length} legs · {bet.sportsbook ?? ""}
+                      </div>
+                    )}
+                    {bet.legs.length === 0 && bet.sportsbook && (
+                      <div className="text-[11px] text-muted-foreground truncate">{bet.sportsbook}</div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-right font-mono whitespace-nowrap">
+                    <OddsCell bet={bet} />
+                  </TableCell>
                   <TableCell className="text-xs text-right font-mono">${bet.stake.toFixed(2)}</TableCell>
                   <TableCell className={`text-xs text-right font-mono font-medium ${
                     bet.profit != null
@@ -171,9 +196,11 @@ export default function BetHistory({
                         : "text-red-500"
                       : "text-muted-foreground"
                   }`}>
-                    {bet.profit != null
-                      ? `${bet.profit >= 0 ? "+" : ""}$${bet.profit.toFixed(2)}`
-                      : "—"}
+                    {bet.profit != null ? (
+                      `${bet.profit >= 0 ? "+" : "-"}$${Math.abs(bet.profit).toFixed(2)}`
+                    ) : (
+                      <span title="Potential winnings">to win ${calcWin(bet).toWin.toFixed(2)}</span>
+                    )}
                   </TableCell>
                   <TableCell><ResultBadge result={bet.result} /></TableCell>
                   <TableCell className="pr-5 text-right">
@@ -184,6 +211,7 @@ export default function BetHistory({
                           size="icon"
                           className="h-7 w-7"
                           onClick={() => onSettle(bet)}
+                          aria-label="Settle bet"
                           data-testid={`button-settle-${bet.id}`}
                         >
                           <CheckCircle className="h-3.5 w-3.5" />
@@ -193,7 +221,8 @@ export default function BetHistory({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => onDelete(bet.id)}
+                        onClick={() => setConfirmDelete(bet)}
+                        aria-label="Delete bet"
                         data-testid={`button-delete-${bet.id}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -206,6 +235,43 @@ export default function BetHistory({
           </Table>
         </div>
       )}
+      <AlertDialog open={confirmDelete !== null} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this bet?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDelete?.description} will be removed from your history and stats. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmDelete) onDelete(confirmDelete.id);
+                setConfirmDelete(null);
+              }}
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
+  );
+}
+
+function OddsCell({ bet }: { bet: BetWithLegs }) {
+  if (!bet.boostPct) return <>{formatAmericanOdds(bet.odds)}</>;
+  const { boostedOdds } = calcWin(bet);
+  return (
+    <span title={`${formatAmericanOdds(bet.odds)} with a ${bet.boostPct}% boost`} className="inline-flex items-center gap-1">
+      <span className="text-muted-foreground line-through">{formatAmericanOdds(bet.odds)}</span>
+      <span className="text-amber-600 dark:text-amber-400 inline-flex items-center">
+        <Zap className="h-3 w-3" />
+        {formatAmericanOdds(boostedOdds)}
+      </span>
+    </span>
   );
 }

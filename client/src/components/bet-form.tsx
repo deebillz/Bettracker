@@ -5,89 +5,66 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Loader2, ChevronsUpDown, Check, Plus, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Loader2, ChevronsUpDown, Check, Plus, Trash2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TEAMS_BY_SPORT, INDIVIDUAL_SPORTS } from "@/data/teams";
+import { SPORTS, BET_TYPES, SPORTSBOOKS, BOOST_PRESETS } from "@/lib/constants";
+import { parseAmericanOdds, formatAmericanOdds, parlayOdds, calcWin } from "@shared/odds";
 
-const formSchema = z.object({
-  date: z.string().min(1, "Date is required"),
-  sport: z.string().min(1, "Sport is required"),
-  betType: z.string().min(1, "Bet type is required"),
-  description: z.string().min(1, "Description is required"),
-  odds: z.string().min(1, "Odds are required"),
-  stake: z.string().min(1, "Stake is required").refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Must be a positive number"),
-  sportsbook: z.string().default("DraftKings"),
-  notes: z.string().optional(),
-});
+const optionalPositive = (msg: string) =>
+  z
+    .string()
+    .optional()
+    .refine((v) => !v || (Number.isFinite(Number(v)) && Number(v) >= 0), msg);
+
+const formSchema = z
+  .object({
+    date: z.string().min(1, "Date is required"),
+    sport: z.string(),
+    betType: z.string().min(1, "Bet type is required"),
+    description: z.string(),
+    odds: z.string().refine((v) => parseAmericanOdds(v) !== null, "Enter odds like -142 or +230"),
+    stake: z
+      .string()
+      .min(1, "Stake is required")
+      .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0, "Must be more than 0"),
+    sportsbook: z.string(),
+    notes: z.string().optional(),
+    boostOn: z.boolean(),
+    boostPct: z.string().optional(),
+    boostMaxWin: optionalPositive("Must be 0 or more"),
+  })
+  .superRefine((v, ctx) => {
+    if (v.betType !== "parlay") {
+      if (!v.sport) ctx.addIssue({ code: "custom", path: ["sport"], message: "Sport is required" });
+      if (!v.description.trim())
+        ctx.addIssue({ code: "custom", path: ["description"], message: "Description is required" });
+    }
+    if (v.boostOn) {
+      const pct = Number(v.boostPct);
+      if (!v.boostPct || !Number.isFinite(pct) || pct <= 0 || pct > 1000)
+        ctx.addIssue({ code: "custom", path: ["boostPct"], message: "Enter a boost between 1 and 1000%" });
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
-const SPORTS = ["MLB", "NFL", "NBA", "NHL", "College Football", "College Basketball", "Boxing", "MMA", "Soccer", "Tennis", "Other"];
-const BET_TYPES = ["Moneyline", "Parlay", "Spread", "Total (O/U)", "Prop", "Futures", "Other"];
-const SPORTSBOOKS = ["DraftKings", "FanDuel", "BetMGM", "Caesars", "ESPN BET", "Other"];
-
-// ---------- Parlay leg type ----------
 interface ParlayLeg {
   sport: string;
   teamA: string;
   teamB: string;
-  pick: string; // free-text description of the pick (e.g. "Rangers ML")
+  pick: string;
   odds: string;
 }
 
-function emptyLeg(): ParlayLeg {
-  return { sport: "", teamA: "", teamB: "", pick: "", odds: "" };
-}
+const emptyLeg = (): ParlayLeg => ({ sport: "", teamA: "", teamB: "", pick: "", odds: "" });
 
-// Convert American odds string to decimal multiplier
-function americanToDecimal(odds: string): number | null {
-  const n = parseInt(odds, 10);
-  if (isNaN(n) || n === 0) return null;
-  if (n > 0) return n / 100 + 1;
-  return 100 / Math.abs(n) + 1;
-}
-
-// Convert decimal multiplier back to American odds string
-function decimalToAmerican(dec: number): string {
-  if (dec >= 2) return `+${Math.round((dec - 1) * 100)}`;
-  return `-${Math.round(100 / (dec - 1))}`;
-}
-
-// Calculate combined parlay odds from array of American odds strings
-function combinedParlayOdds(legs: ParlayLeg[]): string {
-  const decimals = legs.map((l) => americanToDecimal(l.odds)).filter((d): d is number => d !== null);
-  if (decimals.length < 2) return "";
-  const combined = decimals.reduce((acc, d) => acc * d, 1);
-  return decimalToAmerican(combined);
-}
+const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ---------- TeamCombobox ----------
 function TeamCombobox({
@@ -104,7 +81,6 @@ function TeamCombobox({
   testId: string;
 }) {
   const [open, setOpen] = useState(false);
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -115,15 +91,13 @@ function TeamCombobox({
           className="w-full justify-between font-normal h-9 bg-transparent text-sm"
           data-testid={testId}
         >
-          <span className="truncate">
-            {value || <span className="text-muted-foreground">{placeholder}</span>}
-          </span>
+          <span className="truncate">{value || <span className="text-muted-foreground">{placeholder}</span>}</span>
           <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command>
-          <CommandInput placeholder={`Search...`} />
+          <CommandInput placeholder="Search..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
@@ -136,12 +110,7 @@ function TeamCombobox({
                     setOpen(false);
                   }}
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === team ? "opacity-100" : "opacity-0"
-                    )}
-                  />
+                  <Check className={cn("mr-2 h-4 w-4", value === team ? "opacity-100" : "opacity-0")} />
                   {team}
                 </CommandItem>
               ))}
@@ -153,7 +122,7 @@ function TeamCombobox({
   );
 }
 
-// ---------- Single Parlay Leg Row ----------
+// ---------- One parlay leg ----------
 function ParlayLegRow({
   leg,
   index,
@@ -169,18 +138,16 @@ function ParlayLegRow({
 }) {
   const teams = useMemo(() => TEAMS_BY_SPORT[leg.sport] || [], [leg.sport]);
   const hasTeams = teams.length > 0;
-  const isIndividual = INDIVIDUAL_SPORTS.includes(leg.sport);
+  const oddsInvalid = leg.odds.trim() !== "" && parseAmericanOdds(leg.odds) === null;
 
   const updateField = useCallback(
     (field: keyof ParlayLeg, value: string) => {
       const updated = { ...leg, [field]: value };
-      // Reset teams when sport changes
       if (field === "sport") {
         updated.teamA = "";
         updated.teamB = "";
         updated.pick = "";
       }
-      // Auto-build pick description from team selections
       if (field === "teamA" || field === "teamB") {
         const a = field === "teamA" ? value : leg.teamA;
         const b = field === "teamB" ? value : leg.teamB;
@@ -189,15 +156,13 @@ function ParlayLegRow({
       }
       onUpdate(index, updated);
     },
-    [leg, index, onUpdate]
+    [leg, index, onUpdate],
   );
 
   return (
     <div className="rounded-lg border border-border/60 p-3 space-y-2.5 bg-muted/30" data-testid={`parlay-leg-${index}`}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Leg {index + 1}
-        </span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Leg {index + 1}</span>
         {canRemove && (
           <Button
             type="button"
@@ -205,6 +170,7 @@ function ParlayLegRow({
             size="sm"
             className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
             onClick={() => onRemove(index)}
+            aria-label={`Remove leg ${index + 1}`}
             data-testid={`remove-leg-${index}`}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -212,19 +178,19 @@ function ParlayLegRow({
         )}
       </div>
 
-      {/* Sport selector */}
       <Select value={leg.sport} onValueChange={(v) => updateField("sport", v)}>
         <SelectTrigger className="h-9 text-sm" data-testid={`leg-sport-${index}`}>
           <SelectValue placeholder="Sport" />
         </SelectTrigger>
         <SelectContent>
-          {SPORTS.filter((s) => s !== "Other").map((s) => (
-            <SelectItem key={s} value={s}>{s}</SelectItem>
+          {SPORTS.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>
 
-      {/* Team pickers or free text */}
       {leg.sport && hasTeams && (
         <div className="grid grid-cols-2 gap-2">
           <TeamCombobox
@@ -244,30 +210,21 @@ function ParlayLegRow({
         </div>
       )}
 
-      {leg.sport && !hasTeams && (
+      <div className="grid grid-cols-[1fr_96px] gap-2">
         <Input
-          placeholder={isIndividual ? "e.g. Canelo ML" : "Pick description"}
-          value={leg.pick}
-          onChange={(e) => updateField("pick", e.target.value)}
-          className="h-9 text-sm"
-          data-testid={`leg-pick-${index}`}
-        />
-      )}
-
-      {/* Pick override (if teams selected, allow editing) + Odds */}
-      <div className="grid grid-cols-2 gap-2">
-        <Input
-          placeholder="Pick (e.g. Rangers ML)"
+          placeholder="Pick (e.g. Jets +3.5)"
           value={leg.pick}
           onChange={(e) => updateField("pick", e.target.value)}
           className="h-9 text-sm"
           data-testid={`leg-desc-${index}`}
         />
         <Input
-          placeholder="Odds (e.g. -142)"
+          placeholder="Odds"
+          inputMode="numeric"
           value={leg.odds}
           onChange={(e) => updateField("odds", e.target.value)}
-          className="h-9 text-sm"
+          className={cn("h-9 text-sm", oddsInvalid && "border-destructive")}
+          aria-invalid={oddsInvalid}
           data-testid={`leg-odds-${index}`}
         />
       </div>
@@ -275,7 +232,72 @@ function ParlayLegRow({
   );
 }
 
-// ---------- Main BetForm ----------
+// ---------- Payout preview (shows the boost math live) ----------
+function PayoutPreview({
+  odds,
+  stake,
+  boostPct,
+  boostMaxWin,
+}: {
+  odds: number | null;
+  stake: number;
+  boostPct: number | null;
+  boostMaxWin: number | null;
+}) {
+  if (odds === null || !(stake > 0)) return null;
+  const w = calcWin({ stake, odds, boostPct, boostMaxWin });
+  const boosted = w.bonusWin > 0;
+  const capped = boosted && boostMaxWin != null && w.bonusWin >= boostMaxWin;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-3 py-2.5 text-sm space-y-1",
+        boosted ? "border-amber-500/40 bg-amber-500/10" : "border-primary/20 bg-primary/5",
+      )}
+      data-testid="payout-preview"
+    >
+      <Row label="Odds">
+        {boosted ? (
+          <>
+            <span className="text-muted-foreground line-through mr-1.5">{formatAmericanOdds(odds)}</span>
+            <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-boosted-odds">
+              {formatAmericanOdds(w.boostedOdds)}
+            </span>
+          </>
+        ) : (
+          <span className="font-semibold">{formatAmericanOdds(odds)}</span>
+        )}
+      </Row>
+      <Row label="To win">
+        <span className="font-semibold" data-testid="text-to-win">
+          {money(w.toWin)}
+        </span>
+        {boosted && (
+          <span className="text-xs text-muted-foreground ml-1.5">
+            ({money(w.baseWin)} + {money(w.bonusWin)} boost{capped ? ", capped" : ""})
+          </span>
+        )}
+      </Row>
+      <Row label="Total payout">
+        <span className="font-semibold" data-testid="text-payout">
+          {money(w.payout)}
+        </span>
+      </Row>
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="tabular-nums text-right">{children}</span>
+    </div>
+  );
+}
+
+// ---------- Main form ----------
 export default function BetForm({
   onSubmit,
   isPending,
@@ -283,7 +305,10 @@ export default function BetForm({
   onSubmit: (data: Record<string, unknown>) => void;
   isPending: boolean;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -296,26 +321,31 @@ export default function BetForm({
       stake: "",
       sportsbook: "DraftKings",
       notes: "",
+      boostOn: false,
+      boostPct: "",
+      boostMaxWin: "",
     },
   });
 
-  const selectedSport = useWatch({ control: form.control, name: "sport" });
-  const selectedBetType = useWatch({ control: form.control, name: "betType" });
-  const isParlay = selectedBetType === "Parlay";
+  const [selectedSport, betType, oddsStr, stakeStr, boostOn, boostPctStr, boostMaxWinStr] = useWatch({
+    control: form.control,
+    name: ["sport", "betType", "odds", "stake", "boostOn", "boostPct", "boostMaxWin"],
+  });
+  const isParlay = betType === "parlay";
 
   const isIndividualSport = INDIVIDUAL_SPORTS.includes(selectedSport);
   const teams = useMemo(() => TEAMS_BY_SPORT[selectedSport] || [], [selectedSport]);
   const hasTeams = teams.length > 0;
 
-  // Single-bet team state
   const [teamA, setTeamA] = useState("");
   const [teamB, setTeamB] = useState("");
   const [manualDesc, setManualDesc] = useState(false);
 
-  // Parlay legs state
   const [parlayLegs, setParlayLegs] = useState<ParlayLeg[]>([emptyLeg(), emptyLeg()]);
+  const [parlayOddsEdited, setParlayOddsEdited] = useState(false);
+  const [legsError, setLegsError] = useState("");
 
-  // Reset team picks when sport changes (single bet mode)
+  // Single bet: reset team picks when the sport changes
   useEffect(() => {
     if (isParlay) return;
     setTeamA("");
@@ -324,110 +354,86 @@ export default function BetForm({
     form.setValue("description", "");
   }, [selectedSport, form, isParlay]);
 
-  // Auto-generate description from team picks (single bet mode)
+  // Single bet: build the description from the team picks
   useEffect(() => {
     if (isParlay || manualDesc) return;
-    if (teamA && teamB) {
-      form.setValue("description", `${teamA} vs ${teamB}`);
-    } else if (teamA) {
-      form.setValue("description", teamA);
-    }
+    if (teamA && teamB) form.setValue("description", `${teamA} vs ${teamB}`);
+    else if (teamA) form.setValue("description", teamA);
   }, [teamA, teamB, manualDesc, form, isParlay]);
 
-  // When switching to/from parlay, reset fields appropriately
+  // Switching between parlay and single resets the pick fields
   useEffect(() => {
+    form.setValue("description", "");
+    form.setValue("odds", "");
+    setParlayOddsEdited(false);
+    setLegsError("");
     if (isParlay) {
-      form.setValue("sport", "Mixed");
-      form.setValue("description", "");
-      form.setValue("odds", "");
+      form.setValue("sport", "");
       setParlayLegs([emptyLeg(), emptyLeg()]);
-    } else {
-      // If sport was "Mixed" from parlay mode, reset it
-      if (form.getValues("sport") === "Mixed") {
-        form.setValue("sport", "");
-      }
-      form.setValue("description", "");
-      form.setValue("odds", "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isParlay]);
 
-  // Sync parlay legs → description + odds
+  // Parlay: combined odds from the legs, unless the user typed the book's exact price
+  const legOdds = parlayLegs.map((l) => parseAmericanOdds(l.odds)).filter((o): o is number => o !== null);
+  const combinedOdds = parlayOdds(legOdds);
   useEffect(() => {
-    if (!isParlay) return;
-    const validLegs = parlayLegs.filter((l) => l.pick.trim());
-    if (validLegs.length > 0) {
-      const desc = validLegs.map((l) => l.pick).join(" + ");
-      form.setValue("description", desc);
-    }
-    const combined = combinedParlayOdds(parlayLegs);
-    if (combined) {
-      form.setValue("odds", combined);
-    }
-  }, [parlayLegs, isParlay, form]);
+    if (!isParlay || parlayOddsEdited) return;
+    form.setValue("odds", combinedOdds !== null ? formatAmericanOdds(combinedOdds) : "", { shouldValidate: false });
+  }, [combinedOdds, isParlay, parlayOddsEdited, form]);
 
   const updateLeg = useCallback((index: number, leg: ParlayLeg) => {
-    setParlayLegs((prev) => {
-      const next = [...prev];
-      next[index] = leg;
-      return next;
-    });
+    setParlayLegs((prev) => prev.map((l, i) => (i === index ? leg : l)));
+    setLegsError("");
   }, []);
-
-  const removeLeg = useCallback((index: number) => {
-    setParlayLegs((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const addLeg = useCallback(() => {
-    setParlayLegs((prev) => [...prev, emptyLeg()]);
-  }, []);
+  const removeLeg = useCallback((index: number) => setParlayLegs((prev) => prev.filter((_, i) => i !== index)), []);
+  const addLeg = useCallback(() => setParlayLegs((prev) => [...prev, emptyLeg()]), []);
 
   const handleSubmit = (values: FormValues) => {
-    // Determine sport for parlay: if all legs same sport use that, else "Mixed"
     let sport = values.sport;
-    if (isParlay) {
-      const legSports = [...new Set(parlayLegs.filter((l) => l.sport).map((l) => l.sport))];
-      sport = legSports.length === 1 ? legSports[0] : "Mixed";
-    }
+    let description = values.description.trim();
+    let legs: { sport: string; pick: string; odds: number }[] | undefined;
 
-    const legsJson = isParlay
-      ? JSON.stringify(
-          parlayLegs
-            .filter((l) => l.pick.trim())
-            .map((l) => ({
-              sport: l.sport,
-              pick: l.pick,
-              odds: l.odds,
-            }))
-        )
-      : null;
+    if (isParlay) {
+      const filled = parlayLegs.filter((l) => l.pick.trim() || l.odds.trim());
+      const bad = filled.find((l) => !l.sport || !l.pick.trim() || parseAmericanOdds(l.odds) === null);
+      if (bad || filled.length < 2) {
+        setLegsError(
+          filled.length < 2
+            ? "A parlay needs at least 2 legs"
+            : "Every leg needs a sport, a pick and valid odds (like -110 or +150)",
+        );
+        return;
+      }
+      legs = filled.map((l) => ({ sport: l.sport, pick: l.pick.trim(), odds: parseAmericanOdds(l.odds)! }));
+      const sports = Array.from(new Set(legs.map((l) => l.sport)));
+      sport = sports.length === 1 ? sports[0] : "Mixed";
+      description = description || legs.map((l) => l.pick).join(" + ");
+    }
 
     onSubmit({
       date: values.date,
       sport,
-      betType: values.betType.toLowerCase(),
-      description: values.description,
-      odds: values.odds,
-      stake: parseFloat(values.stake),
-      result: "pending",
-      sportsbook: values.sportsbook,
-      notes: values.notes || null,
-      legs: legsJson,
-      payout: null,
-      profit: null,
+      betType: values.betType,
+      description,
+      odds: parseAmericanOdds(values.odds),
+      stake: Number(values.stake),
+      sportsbook: values.sportsbook || null,
+      notes: values.notes?.trim() || null,
+      boostPct: values.boostOn ? Number(values.boostPct) : null,
+      boostMaxWin: values.boostOn && values.boostMaxWin ? Number(values.boostMaxWin) : null,
+      legs,
     });
-
-    // Reset state
-    setTeamA("");
-    setTeamB("");
-    setManualDesc(false);
-    setParlayLegs([emptyLeg(), emptyLeg()]);
   };
+
+  const previewOdds = parseAmericanOdds(oddsStr);
+  const previewStake = Number(stakeStr);
+  const previewBoost = boostOn && Number(boostPctStr) > 0 ? Number(boostPctStr) : null;
+  const previewCap = boostOn && boostMaxWinStr ? Number(boostMaxWinStr) : null;
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        {/* Row 1: Date + Bet Type */}
         <div className="grid grid-cols-2 gap-3">
           <FormField
             control={form.control}
@@ -447,7 +453,7 @@ export default function BetForm({
             name="betType"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Bet Type</FormLabel>
+                <FormLabel>Bet type</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger data-testid="select-bet-type">
@@ -456,7 +462,9 @@ export default function BetForm({
                   </FormControl>
                   <SelectContent>
                     {BET_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -466,17 +474,17 @@ export default function BetForm({
           />
         </div>
 
-        {/* ========== PARLAY MODE ========== */}
+        {/* ===== Parlay ===== */}
         {isParlay && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Parlay Legs</span>
+              <span className="text-sm font-medium">Parlay legs</span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {parlayLegs.length} leg{parlayLegs.length !== 1 ? "s" : ""}
               </span>
             </div>
 
-            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+            <div className="space-y-2">
               {parlayLegs.map((leg, i) => (
                 <ParlayLegRow
                   key={i}
@@ -489,38 +497,49 @@ export default function BetForm({
               ))}
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={addLeg}
-              data-testid="button-add-leg"
-            >
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={addLeg} data-testid="button-add-leg">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add Leg
+              Add leg
             </Button>
 
-            {/* Combined odds display */}
-            {(() => {
-              const combined = combinedParlayOdds(parlayLegs);
-              if (!combined) return null;
-              return (
-                <div className="rounded-md bg-primary/10 border border-primary/20 px-3 py-2 flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">Combined Odds</span>
-                  <span className="text-sm font-bold text-primary tabular-nums" data-testid="text-combined-odds">
-                    {combined}
-                  </span>
-                </div>
-              );
-            })()}
+            {legsError && (
+              <p className="text-sm font-medium text-destructive" data-testid="text-legs-error">
+                {legsError}
+              </p>
+            )}
+
+            <FormField
+              control={form.control}
+              name="odds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Parlay odds</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Fills in from the legs"
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        setParlayOddsEdited(e.target.value.trim() !== "");
+                      }}
+                      data-testid="input-parlay-odds"
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    {parlayOddsEdited && combinedOdds !== null
+                      ? `Using your price. Calculated from legs: ${formatAmericanOdds(combinedOdds)}`
+                      : "Calculated from the legs. Type over it if your book shows a different price."}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         )}
 
-        {/* ========== SINGLE BET MODE ========== */}
+        {/* ===== Single bet ===== */}
         {!isParlay && (
           <>
-            {/* Sport selector */}
             <FormField
               control={form.control}
               name="sport"
@@ -535,7 +554,9 @@ export default function BetForm({
                     </FormControl>
                     <SelectContent>
                       {SPORTS.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -544,49 +565,32 @@ export default function BetForm({
               )}
             />
 
-            {/* Team / Player selection — only shows after sport is selected */}
-            {selectedSport && !manualDesc && (
+            {selectedSport && hasTeams && !manualDesc && (
               <div className="space-y-2">
-                {hasTeams ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium leading-none">Your Pick</label>
-                      <TeamCombobox
-                        teams={teams}
-                        value={teamA}
-                        onChange={setTeamA}
-                        placeholder="Select team"
-                        testId="combo-team-a"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium leading-none">Opponent</label>
-                      <TeamCombobox
-                        teams={teams.filter((t) => t !== teamA)}
-                        value={teamB}
-                        onChange={setTeamB}
-                        placeholder="Select team"
-                        testId="combo-team-b"
-                      />
-                    </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <span className="text-sm font-medium leading-none">Your pick</span>
+                    <TeamCombobox teams={teams} value={teamA} onChange={setTeamA} placeholder="Select team" testId="combo-team-a" />
                   </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">
-                    {isIndividualSport
-                      ? "Type the matchup or fighter/player names below"
-                      : "Type the matchup below"}
+                  <div className="space-y-1.5">
+                    <span className="text-sm font-medium leading-none">Opponent</span>
+                    <TeamCombobox
+                      teams={teams.filter((t) => t !== teamA)}
+                      value={teamB}
+                      onChange={setTeamB}
+                      placeholder="Select team"
+                      testId="combo-team-b"
+                    />
                   </div>
-                )}
-                {hasTeams && (
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                    onClick={() => setManualDesc(true)}
-                    data-testid="button-manual-desc"
-                  >
-                    Type manually instead
-                  </button>
-                )}
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                  onClick={() => setManualDesc(true)}
+                  data-testid="button-manual-desc"
+                >
+                  Type manually instead
+                </button>
               </div>
             )}
 
@@ -596,7 +600,7 @@ export default function BetForm({
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
                 onClick={() => {
                   setManualDesc(false);
-                  form.setValue("description", teamA && teamB ? `${teamA} vs ${teamB}` : "");
+                  form.setValue("description", teamA && teamB ? `${teamA} vs ${teamB}` : teamA);
                 }}
                 data-testid="button-team-picker"
               >
@@ -604,7 +608,6 @@ export default function BetForm({
               </button>
             )}
 
-            {/* Description */}
             <FormField
               control={form.control}
               name="description"
@@ -613,13 +616,7 @@ export default function BetForm({
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder={
-                        isIndividualSport
-                          ? "e.g. Canelo vs Benavidez"
-                          : hasTeams && !manualDesc
-                            ? "Auto-filled from team selection"
-                            : "e.g. Rangers ML -142"
-                      }
+                      placeholder={isIndividualSport ? "e.g. Canelo ML" : "e.g. Jets +3.5"}
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -633,7 +630,6 @@ export default function BetForm({
               )}
             />
 
-            {/* Odds */}
             <FormField
               control={form.control}
               name="odds"
@@ -641,7 +637,7 @@ export default function BetForm({
                 <FormItem>
                   <FormLabel>Odds</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. -142 or +230" {...field} data-testid="input-odds" />
+                    <Input placeholder="e.g. -142 or +230" inputMode="numeric" {...field} data-testid="input-odds" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -650,16 +646,6 @@ export default function BetForm({
           </>
         )}
 
-        {/* Hidden fields for parlay mode (auto-synced) */}
-        {isParlay && (
-          <>
-            <input type="hidden" {...form.register("sport")} />
-            <input type="hidden" {...form.register("description")} />
-            <input type="hidden" {...form.register("odds")} />
-          </>
-        )}
-
-        {/* Sportsbook + Stake (always visible) */}
         <div className="grid grid-cols-2 gap-3">
           <FormField
             control={form.control}
@@ -675,7 +661,9 @@ export default function BetForm({
                   </FormControl>
                   <SelectContent>
                     {SPORTSBOOKS.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -698,6 +686,85 @@ export default function BetForm({
           />
         </div>
 
+        {/* ===== Odds boost ===== */}
+        <div className="rounded-lg border border-border/60 p-3 space-y-3">
+          <FormField
+            control={form.control}
+            name="boostOn"
+            render={({ field }) => (
+              <FormItem className="flex items-center justify-between space-y-0">
+                <div>
+                  <FormLabel className="flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-500" />
+                    Odds boost
+                  </FormLabel>
+                  <p className="text-xs text-muted-foreground mt-1">A sportsbook promo that adds a % to your winnings</p>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-boost" />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {boostOn && (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {BOOST_PRESETS.map((p) => (
+                  <Button
+                    key={p}
+                    type="button"
+                    size="sm"
+                    variant={Number(boostPctStr) === p ? "default" : "outline"}
+                    className="h-7 px-2.5 text-xs"
+                    onClick={() => form.setValue("boostPct", String(p), { shouldValidate: true })}
+                    data-testid={`boost-preset-${p}`}
+                  >
+                    {p}%
+                  </Button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="boostPct"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Boost (%)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="any" min="0" placeholder="25" {...field} data-testid="input-boost-pct" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="boostMaxWin"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Max extra winnings ($)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Optional"
+                          {...field}
+                          data-testid="input-boost-max"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <PayoutPreview odds={previewOdds} stake={previewStake} boostPct={previewBoost} boostMaxWin={previewCap} />
+
         <FormField
           control={form.control}
           name="notes"
@@ -705,12 +772,7 @@ export default function BetForm({
             <FormItem>
               <FormLabel>Notes (optional)</FormLabel>
               <FormControl>
-                <Textarea
-                  placeholder="Any additional context..."
-                  className="resize-none h-16"
-                  {...field}
-                  data-testid="input-notes"
-                />
+                <Textarea placeholder="Any extra context..." className="resize-none h-16" {...field} data-testid="input-notes" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -723,8 +785,10 @@ export default function BetForm({
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Saving...
             </>
+          ) : isParlay ? (
+            `Log ${parlayLegs.length}-leg parlay`
           ) : (
-            isParlay ? `Log ${parlayLegs.length}-Leg Parlay` : "Log Bet"
+            "Log bet"
           )}
         </Button>
       </form>

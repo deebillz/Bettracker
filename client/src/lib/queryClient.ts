@@ -1,69 +1,54 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { getAuthToken } from "./auth";
 
-const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+// Sign-in uses an httpOnly session cookie, which the browser sends automatically
+// with same-origin requests, so no tokens are handled in JavaScript.
 
-function getAuthHeaders(): Record<string, string> {
-  const token = getAuthToken();
-  if (token) return { Authorization: `Bearer ${token}` };
-  return {};
-}
-
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
   }
 }
 
-export async function apiRequest(
-  method: string,
-  url: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  const headers: Record<string, string> = {
-    ...getAuthHeaders(),
-    ...(data ? { "Content-Type": "application/json" } : {}),
-  };
+async function errorFrom(res: Response): Promise<ApiError> {
+  let message = res.statusText || "Request failed";
+  try {
+    const body = await res.json();
+    if (body?.message) message = body.message;
+  } catch {
+    // not JSON
+  }
+  return new ApiError(res.status, message);
+}
 
-  const res = await fetch(`${API_BASE}${url}`, {
+/** Sends a JSON request and throws an ApiError with the server's message on failure. */
+export async function apiRequest(method: string, url: string, data?: unknown): Promise<Response> {
+  const res = await fetch(url, {
     method,
-    headers,
-    body: data ? JSON.stringify(data) : undefined,
+    credentials: "same-origin",
+    headers: data !== undefined ? { "Content-Type": "application/json" } : {},
+    body: data !== undefined ? JSON.stringify(data) : undefined,
   });
-
+  if (!res.ok) throw await errorFrom(res);
   return res;
 }
 
-type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
-  on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`, {
-      headers: getAuthHeaders(),
-    });
-
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
-    }
-
-    await throwIfResNotOk(res);
-    return await res.json();
-  };
+const defaultQueryFn: QueryFunction = async ({ queryKey }) => {
+  const res = await fetch(queryKey.join("/"), { credentials: "same-origin" });
+  if (!res.ok) throw await errorFrom(res);
+  return res.json();
+};
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
-      refetchInterval: false,
+      queryFn: defaultQueryFn,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
       retry: false,
     },
-    mutations: {
-      retry: false,
-    },
+    mutations: { retry: false },
   },
 });

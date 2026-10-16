@@ -1,0 +1,16 @@
+# Render Blueprint: in Render choose New > Blueprint, pick this repo, and paste
+# your Neon connection string when it asks for DATABASE_URL.
+services:
+  - type: web
+    name: bettracker
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false # entered in the Render dashboard, never stored in the repo
