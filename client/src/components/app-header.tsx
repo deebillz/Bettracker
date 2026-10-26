@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Moon, Sun, TrendingUp, LogOut, LayoutDashboard, BarChart3 } from "lucide-react";
@@ -10,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { openBetForm, closeBetForm, useBetFormState } from "@/lib/bet-form-store";
 
 const TABS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, testId: "tab-dashboard" },
@@ -46,14 +46,14 @@ function NavTabs({ className }: { className?: string }) {
 export default function AppHeader() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
-  const { toast, dismiss } = useToast();
-  const [addOpen, setAddOpen] = useState(false);
+  const { toast } = useToast();
+  const form = useBetFormState();
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => (await apiRequest("POST", "/api/bets", data)).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
-      setAddOpen(false);
+      closeBetForm();
       toast({ title: "Bet logged", description: "Your bet has been recorded." });
     },
     onError: (err: Error) => toast({ title: "Something went wrong", description: err.message, variant: "destructive" }),
@@ -92,10 +92,10 @@ export default function AppHeader() {
             <LogOut className="h-4 w-4" />
           </Button>
           <Dialog
-            open={addOpen}
+            open={form.open}
             onOpenChange={(open) => {
-              if (open) dismiss(); // clear any confirmation so it can't cover the form
-              setAddOpen(open);
+              if (open) openBetForm();
+              else closeBetForm();
             }}
           >
             <DialogTrigger asChild>
@@ -106,9 +106,14 @@ export default function AppHeader() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Log a New Bet</DialogTitle>
+                <DialogTitle>{form.prefill ? "Log again" : "Log a bet"}</DialogTitle>
               </DialogHeader>
-              <BetForm onSubmit={(data) => createMutation.mutate(data)} isPending={createMutation.isPending} />
+              <BetForm
+                key={form.version}
+                prefill={form.prefill}
+                onSubmit={(data) => createMutation.mutate(data)}
+                isPending={createMutation.isPending}
+              />
             </DialogContent>
           </Dialog>
         </div>

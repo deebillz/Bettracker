@@ -209,15 +209,21 @@ const BET_TYPE_LABELS: Record<string, string> = {
 };
 
 /**
- * The team a single bet was on. The bet form writes "Team A vs Team B" (your pick
- * first) or just "Team A", so the text before " vs " is the pick when it's a known team.
+ * The team a single bet was on: the full team name the pick starts with, e.g.
+ * "New York Jets +3.5" or "New York Jets vs Buffalo Bills" -> New York Jets.
+ * The longest match wins, so "Miami (OH) RedHawks" isn't mistaken for "Miami".
  */
 export function pickedTeam(bet: BetWithLegs): string | null {
   if (bet.legs.length > 0) return null;
   const teams = TEAMS_BY_SPORT[bet.sport];
   if (!teams) return null;
-  const first = bet.description.split(/\s+vs\.?\s+/i)[0].trim();
-  return teams.includes(first) ? first : null;
+  const d = bet.description.trim().toLowerCase();
+  let best: string | null = null;
+  for (const t of teams) {
+    const tl = t.toLowerCase();
+    if ((d === tl || d.startsWith(tl + " ")) && (!best || t.length > best.length)) best = t;
+  }
+  return best;
 }
 
 /** The group(s) a bet belongs to for a dimension. Most dimensions give one key; none means "skip". */
