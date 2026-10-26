@@ -31,7 +31,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Trash2, Gavel, MinusCircle, Zap } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Trash2, Gavel, MinusCircle, Zap, Repeat } from "lucide-react";
+import { openBetForm } from "@/lib/bet-form-store";
 
 function ResultBadge({ result }: { result: string }) {
   switch (result) {
@@ -220,6 +221,17 @@ export default function BetHistory({
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={() => openBetForm(toPrefill(bet))}
+                        aria-label="Log this bet again"
+                        title="Log again"
+                        data-testid={`button-again-${bet.id}`}
+                      >
+                        <Repeat className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         onClick={() => setConfirmDelete(bet)}
                         aria-label="Delete bet"
@@ -274,4 +286,19 @@ function OddsCell({ bet }: { bet: BetWithLegs }) {
       </span>
     </span>
   );
+}
+
+/** Same bet, ready to log again: today's date, same pick, odds, stake, book and boost. */
+function toPrefill(bet: BetWithLegs) {
+  return {
+    betType: bet.betType,
+    sport: bet.sport,
+    description: bet.description,
+    odds: formatAmericanOdds(bet.odds),
+    stake: String(bet.stake),
+    sportsbook: bet.sportsbook,
+    boostPct: bet.boostPct,
+    boostMaxWin: bet.boostMaxWin,
+    legs: bet.legs.map((l) => ({ sport: l.sport, pick: l.pick, odds: formatAmericanOdds(l.odds) })),
+  };
 }

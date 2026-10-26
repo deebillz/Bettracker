@@ -194,4 +194,9 @@ function useToast() {
   }
 }
 
-export { useToast, toast }
+/** Closes every open toast (used when a form opens, so nothing covers it). */
+function dismissAllToasts() {
+  dispatch({ type: "DISMISS_TOAST" })
+}
+
+export { useToast, toast, dismissAllToasts }

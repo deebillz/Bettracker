@@ -95,6 +95,10 @@ test("filters combine", () => {
 test("team pick comes from the first team in the description", () => {
   assert.equal(pickedTeam(bet({})), "New York Jets");
   assert.equal(pickedTeam(bet({ description: "Jets +3.5" })), null); // not a full team name
+  assert.equal(pickedTeam(bet({ description: "New York Jets +3.5" })), "New York Jets");
+  assert.equal(pickedTeam(bet({ description: "New York Jets" })), "New York Jets");
+  assert.equal(pickedTeam(bet({ sport: "College Football", description: "Miami (OH) RedHawks -7" })), "Miami (OH) RedHawks");
+  assert.equal(pickedTeam(bet({ description: "New York Jetsetters" })), null);
   assert.equal(pickedTeam(bet({ sport: "College Football", description: "Sacramento State Hornets vs North Dakota State Bison" })), "Sacramento State Hornets");
 });
 
